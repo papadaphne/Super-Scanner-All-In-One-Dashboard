@@ -1,0 +1,5 @@
+{
+  "name": "Super-Scanner All-In-One Dashboard",
+  "description": "A comprehensive dashboard presenting the Super-Scanner crypto bot, including its Python code, a Gemini AI prompt for signal generation, and various integration guides for TradingView and server deployment.",
+  "requestFramePermissions": []
+}
