@@ -10,41 +10,65 @@ const modeColors: { [key in Signal['mode']]: string } = {
   lowcap: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
 };
 
-const SignalCard: React.FC<{ signal: Signal }> = ({ signal }) => (
-    <div className={`bg-gray-800 border ${modeColors[signal.mode]} rounded-lg shadow-lg p-4 mb-4 animate-fadeIn`}>
-        <div className="flex justify-between items-start">
-            <div>
-                <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${modeColors[signal.mode]}`}>
-                    {signal.mode.replace('_', ' ')}
-                </span>
-                <h3 className="text-xl font-bold mt-2 text-white">{signal.pair.toUpperCase().replace('_', '/')}</h3>
-                <p className="text-xs text-gray-400">{signal.time}</p>
+const getRsiInfo = (rsi: number): { text: string; color: string } => {
+    if (rsi < 35) return { text: 'Oversold', color: 'text-green-400' };
+    if (rsi > 70) return { text: 'Overbought', color: 'text-red-400' };
+    return { text: 'Neutral', color: 'text-gray-400' };
+}
+
+const SignalCard: React.FC<{ signal: Signal }> = ({ signal }) => {
+    // FIX: Add a check for signal.rsi to prevent crashes if the value is undefined.
+    const hasRsi = typeof signal.rsi === 'number';
+    const rsiInfo = getRsiInfo(hasRsi ? signal.rsi : 50); // Default to neutral if RSI is missing for color calculation
+
+    return (
+        <div className={`bg-gray-800 border ${modeColors[signal.mode]} rounded-lg shadow-lg p-4 mb-4 animate-fadeIn`}>
+            <div className="flex justify-between items-start">
+                <div>
+                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${modeColors[signal.mode]}`}>
+                        {signal.mode.replace('_', ' ')}
+                    </span>
+                    <h3 className="text-xl font-bold mt-2 text-white">{signal.pair.toUpperCase().replace('_', '/')}</h3>
+                    <p className="text-xs text-gray-400">{signal.time}</p>
+                </div>
+                <div className="text-right">
+                    <p className="text-sm text-gray-400">Priority</p>
+                    <p className="text-2xl font-bold text-primary">{signal.priority.toFixed(1)}</p>
+                </div>
             </div>
-            <div className="text-right">
-                <p className="text-sm text-gray-400">Priority</p>
-                <p className="text-2xl font-bold text-primary">{signal.priority.toFixed(1)}</p>
+            <div className="mt-4 grid grid-cols-3 gap-4 text-center">
+                <div>
+                    <p className="text-xs text-gray-400 uppercase">Entry</p>
+                    <p className="font-mono text-white">{signal.entry.toLocaleString('id-ID')}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-gray-400 uppercase">Take Profit</p>
+                    <p className="font-mono text-green-400">{signal.tp.toLocaleString('id-ID')}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-gray-400 uppercase">Stop Loss</p>
+                    <p className="font-mono text-red-400">{signal.sl.toLocaleString('id-ID')}</p>
+                </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-700 grid grid-cols-3 gap-4 text-xs text-gray-400 text-center">
+                 <div>
+                    <span>Ghost: <span className={signal.ghost > 0 ? 'text-green-400' : 'text-red-400'}>{signal.ghost.toFixed(1)}</span></span>
+                </div>
+                <div>
+                     <span>RSI (14): 
+                        {hasRsi
+                            ? <span className={rsiInfo.color}>{signal.rsi.toFixed(1)}</span>
+                            : <span className="text-gray-500">N/A</span>
+                        }
+                     </span>
+                </div>
+                 <div>
+                    <span>News: <span className={signal.news ? 'text-yellow-400' : 'text-gray-500'}>{signal.news ? 'Yes' : 'No'}</span></span>
+                </div>
             </div>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-4 text-center">
-            <div>
-                <p className="text-xs text-gray-400 uppercase">Entry</p>
-                <p className="font-mono text-white">{signal.entry.toLocaleString('id-ID')}</p>
-            </div>
-            <div>
-                <p className="text-xs text-gray-400 uppercase">Take Profit</p>
-                <p className="font-mono text-green-400">{signal.tp.toLocaleString('id-ID')}</p>
-            </div>
-            <div>
-                <p className="text-xs text-gray-400 uppercase">Stop Loss</p>
-                <p className="font-mono text-red-400">{signal.sl.toLocaleString('id-ID')}</p>
-            </div>
-        </div>
-        <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between text-xs text-gray-400">
-            <span>Ghost Bandar: <span className={signal.ghost > 0 ? 'text-green-400' : 'text-red-400'}>{signal.ghost.toFixed(1)}</span></span>
-            <span>News Impact: <span className={signal.news ? 'text-yellow-400' : 'text-gray-500'}>{signal.news ? 'Yes' : 'No'}</span></span>
-        </div>
-    </div>
-);
+    );
+}
 
 const DashboardView: React.FC = () => {
     const [signals, setSignals] = useState<Signal[]>([]);
@@ -99,7 +123,7 @@ const DashboardView: React.FC = () => {
     return (
         <div>
             <h1 className="text-3xl font-bold text-white mb-2">Live Signals (Real)</h1>
-            <p className="text-gray-400 mb-6">This is a live feed of signals from the Python backend. A new signal will appear here when detected.</p>
+            <p className="text-gray-400 mb-6">This is a live feed of signals from the Python backend, now enhanced with RSI for better accuracy.</p>
             
             <div className="max-w-2xl mx-auto">
                 {renderContent()}

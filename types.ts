@@ -10,4 +10,5 @@ export interface Signal {
   priority: number;
   ghost: number;
   news: boolean;
+  rsi: number;
 }

@@ -399,12 +399,20 @@ sudo systemctl enable super_scanner
 sudo systemctl start super_scanner
 sudo journalctl -u super_scanner -f`;
 
-export const TELEGRAM_SETUP_TEXT = `The Python bot sends alerts via Telegram. To set it up, you need to create a \`.env\` file in the same directory as the script with the following content:
+export const TELEGRAM_SETUP_TEXT = `Untuk menghubungkan bot ke Telegram Anda, ikuti 2 langkah mudah ini:
 
-TELEGRAM_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
-CHAT_ID="YOUR_TELEGRAM_CHAT_ID"
+1.  **Buat File Konfigurasi**
+    Buat file baru bernama \`.env\` di folder yang sama dengan skrip \`super_scanner_bot.py\`.
 
-Replace the placeholder values with your actual bot token and the chat ID where you want to receive alerts. You can also configure other parameters like \`POLL_INTERVAL\` and \`MIN_VOLUME_IDR\` in this file.`;
+2.  **Tambahkan Token & ID Anda**
+    Salin kode di bawah ini dan tempelkan ke dalam file \`.env\` yang baru saja Anda buat.
+
+--- Mulai Konten File .env ---
+TELEGRAM_TOKEN="7985033396:AAEbLtnyOzzc8yPT9G535z9nAAdsyN4Fpas"
+CHAT_ID="565361955"
+--- Akhir Konten File .env ---
+
+Setelah disimpan, bot Python akan otomatis menggunakan pengaturan ini untuk mengirim sinyal ke akun Telegram Anda.`;
 
 export const BACKEND_CODE = `import time
 import threading
@@ -420,7 +428,7 @@ from flask_cors import CORS
 # --- CONFIGURATION ---
 POLL_INTERVAL = 15
 MIN_VOLUME_IDR = 1000000
-VOLUME_HISTORY_LEN = 12
+VOLUME_HISTORY_LEN = 30 # Increased for RSI calculation
 USER_AGENT = 'Mozilla/5.0 (compatible; IndodaxScanner/2.0)'
 MAX_SIGNALS_STORED = 20
 
@@ -460,6 +468,38 @@ def safe_get(url, params=None, retries=3):
             logger.debug('Request err %s', e)
         time.sleep(0.3)
     return None
+
+# --- INDICATOR CALCULATION ---
+def calculate_rsi(prices, period=14):
+    if len(prices) < period + 1:
+        return 50.0  # Not enough data, return neutral RSI
+    
+    gains = []
+    losses = []
+    
+    for i in range(1, len(prices)):
+        change = prices[i] - prices[i-1]
+        if change > 0:
+            gains.append(change)
+            losses.append(0)
+        else:
+            gains.append(0)
+            losses.append(abs(change))
+            
+    # Calculate initial average gain and loss
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        
+    if avg_loss == 0:
+        return 100.0 # Prevent division by zero
+        
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
 
 # --- SCORING & LEVEL CALCULATION ---
 def score_signal(pair, now, prev):
@@ -576,6 +616,10 @@ def scanner_worker():
 
                 if not prev: continue
 
+                # Calculate RSI
+                price_history = [h['last'] for h in history[pair]]
+                rsi = calculate_rsi(price_history)
+
                 candidates = []
                 for fn in detection_modules:
                     res = fn(pair, now, prev if fn != module_breakout else history[pair])
@@ -583,16 +627,25 @@ def scanner_worker():
                         res['pair'] = pair
                         res['ghost'] = detect_ghost_behaviour(pair)
                         res['news'] = False # News check not implemented
+                        res['rsi'] = rsi
                         candidates.append(res)
 
                 if not candidates: continue
 
                 for c in candidates:
                     c['priority'] = c['score'] + (abs(c.get('ghost',0)) * 0.15)
+                    # RSI-based priority adjustment
+                    current_rsi = c.get('rsi', 50)
+                    if current_rsi < 35:
+                        c['priority'] += 5 # Strong oversold bonus
+                    elif current_rsi < 50:
+                        c['priority'] += 2 # Mild bonus
+                    elif current_rsi > 70:
+                        c['priority'] -= 4 # Overbought penalty
                 
                 best = max(candidates, key=lambda x: x['priority'])
 
-                if best['priority'] >= 6:
+                if best['priority'] >= 8: # Increased threshold for higher quality signals
                     signal = {
                         "id": str(uuid.uuid4()),
                         "mode": best['mode'],
@@ -604,8 +657,9 @@ def scanner_worker():
                         "priority": round(best['priority'], 1),
                         "ghost": best.get('ghost', 0),
                         "news": best.get('news', False),
+                        "rsi": round(best.get('rsi', 50), 1)
                     }
-                    logger.info(f"NEW SIGNAL: {signal['mode'].upper()} on {signal['pair'].upper()} (Priority: {signal['priority']})")
+                    logger.info(f"NEW SIGNAL: {signal['mode'].upper()} on {signal['pair'].upper()} (Priority: {signal['priority']}, RSI: {signal['rsi']})")
                     signals_store.appendleft(signal)
 
             except Exception as e:
